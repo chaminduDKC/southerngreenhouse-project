@@ -1,0 +1,27 @@
+{
+  "name": "southern-greenhouse",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Southern Greenhouse irrigation contracting management system",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "prisma:generate": "turbo run prisma:generate",
+    "prisma:migrate": "pnpm --filter server prisma migrate dev",
+    "prisma:seed": "pnpm --filter server prisma db seed",
+    "clean": "turbo run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3",
+    "prettier": "^3.4.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*"],
+  "compilerOptions": {
+     "types": ["vite/client"],
+    "composite": true,
+    "outDir": "out",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "paths": {
+      "@sg/types": ["../../packages/types/src/index.ts"]
+    }
+  }
+}
