@@ -2,14 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "src",
     "baseUrl": ".",
     "jsx": "react-jsx",
     "noUncheckedIndexedAccess": false,
     "declaration": false,
-    "declarationMap": false,
-    "paths": {
-      "@sg/types": ["../../packages/types/src/index.ts"]
-    }
+    "declarationMap": false
   },
-  "include": ["src", "../../packages/types/src"]
+  "include": ["src"]
 }
