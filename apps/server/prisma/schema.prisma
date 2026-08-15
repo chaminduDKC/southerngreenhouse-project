@@ -1,0 +1,280 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+model TokenBlacklist {
+  id        String   @id @default(cuid())
+  jti       String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Client {
+  id         String      @id @default(cuid())
+  name       String
+  phone      String
+  address    String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  deletedAt  DateTime?
+  projects   Project[]
+  quotations Quotation[]
+  invoices   Invoice[]
+}
+
+model InventoryItem {
+  id                String       @id @default(cuid())
+  name              String
+  unit              String
+  unitSize          Decimal      @db.Decimal(10,3)
+  boughtPrice       Decimal      @db.Decimal(12,2)
+  soldPrice         Decimal      @db.Decimal(12,2)
+  quantity          Decimal      @db.Decimal(12,3)
+  lowStockThreshold Decimal      @db.Decimal(12,3)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  allocations       Allocation[]
+  quotationItems    QuotationItem[]
+}
+
+enum ProjectStatus {
+  ACTIVE
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String
+  location    String
+  status      ProjectStatus @default(ACTIVE)
+  notes       String        @default("")
+  value       Decimal       @default(0) @db.Decimal(12,2)
+  cost        Decimal       @default(0) @db.Decimal(12,2)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  subProjects SubProject[]  @relation("ProjectToSubProject")
+  quotations  Quotation[]
+  invoices    Invoice[]
+}
+
+model SubProject {
+  id          String         @id @default(cuid())
+  projectId   String
+  project     Project        @relation("ProjectToSubProject", fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  location    String
+  status      ProjectStatus  @default(ACTIVE)
+  notes       String         @default("")
+  value       Decimal        @default(0) @db.Decimal(12,2)
+  cost        Decimal        @default(0) @db.Decimal(12,2)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  children    ChildProject[] @relation("SubProjectToChildProject")
+}
+
+model ChildProject {
+  id           String        @id @default(cuid())
+  subProjectId String
+  subProject   SubProject    @relation("SubProjectToChildProject", fields: [subProjectId], references: [id], onDelete: Cascade)
+  title        String
+  location     String
+  status       ProjectStatus @default(ACTIVE)
+  notes        String        @default("")
+  value        Decimal       @default(0) @db.Decimal(12,2)
+  cost         Decimal       @default(0) @db.Decimal(12,2)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+enum TargetType {
+  PROJECT
+  SUB_PROJECT
+  CHILD_PROJECT
+}
+
+enum AllocationStatus {
+  ALLOCATED
+  USED
+}
+
+model Allocation {
+  id              String           @id @default(cuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem    @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  targetType      TargetType
+  targetId        String
+  quantity        Decimal          @db.Decimal(12,3)
+  status          AllocationStatus @default(ALLOCATED)
+  createdAt       DateTime         @default(now())
+}
+
+model LedgerEntry {
+  id                   String                  @id @default(cuid())
+  date                 DateTime                @unique
+  openingBalance       Decimal                 @db.Decimal(12,2)
+  paymentGivenToday    Decimal                 @db.Decimal(12,2)
+  balanceReturnedToday Decimal                 @db.Decimal(12,2)
+  cost                 Decimal                 @db.Decimal(12,2)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  workerAdvances       LedgerWorkerAdvance[]
+  completedProjects    LedgerCompletedProject[]
+  allocatedProjects    LedgerAllocatedProject[]
+}
+
+model LedgerAllocatedProject {
+  id            String      @id @default(cuid())
+  ledgerEntryId String
+  ledgerEntry   LedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Cascade)
+  targetType    TargetType
+  targetId      String
+  amount        Decimal     @db.Decimal(12, 2)
+}
+
+model LedgerWorkerAdvance {
+  id            String      @id @default(cuid())
+  ledgerEntryId String
+  ledgerEntry   LedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Cascade)
+  workerId      String
+  worker        Worker      @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  advanceAmount Decimal     @db.Decimal(12,2)
+  targetType    TargetType?
+  targetId      String?
+}
+
+model LedgerCompletedProject {
+  id            String      @id @default(cuid())
+  ledgerEntryId String
+  ledgerEntry   LedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Cascade)
+  targetType    TargetType
+  targetId      String
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+model Quotation {
+  id            String          @id @default(cuid())
+  clientId      String
+  client        Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId     String?
+  project       Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  validUntil    DateTime
+  transportCost Decimal         @default(0) @db.Decimal(12,2)
+  notes         String          @default("")
+  status        QuotationStatus @default(DRAFT)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  items         QuotationItem[]
+  invoices      Invoice[]
+}
+
+model QuotationItem {
+  id              String         @id @default(cuid())
+  quotationId     String
+  quotation       Quotation      @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  description     String
+  qty             Decimal        @db.Decimal(12,3)
+  unitPrice       Decimal        @db.Decimal(12,2)
+}
+
+model Invoice {
+  id          String     @id @default(cuid())
+  clientId    String
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quotationId String?
+  quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  totalAmount Decimal    @db.Decimal(12,2)
+  amountDue   Decimal    @db.Decimal(12,2)
+  dueDate     DateTime
+  notes       String     @default("")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+enum RateType {
+  DAILY
+  MONTHLY
+}
+
+model Worker {
+  id          String                @id @default(cuid())
+  workerId    String                @unique
+  name        String
+  phone       String
+  address     String
+  rateType    RateType
+  rate        Decimal               @db.Decimal(12,2)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  attendances Attendance[]
+  salaries    Salary[]
+  advances    LedgerWorkerAdvance[]
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  workerId  String
+  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  date      DateTime
+  present   Boolean  @default(true)
+  dailyPaid Decimal  @default(0) @db.Decimal(12,2)
+  createdAt DateTime @default(now())
+
+  @@unique([workerId, date])
+}
+
+model Salary {
+  id            String   @id @default(cuid())
+  workerId      String
+  worker        Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  month         Int
+  year          Int
+  daysWorked    Int
+  basePay       Decimal  @db.Decimal(12,2)
+  dailyPaid     Decimal  @default(0) @db.Decimal(12,2)
+  bonuses       Decimal  @default(0) @db.Decimal(12,2)
+  deductions    Decimal  @default(0) @db.Decimal(12,2)
+  advancesTotal Decimal  @default(0) @db.Decimal(12,2)
+  netPay        Decimal  @db.Decimal(12,2)
+  generatedAt   DateTime @default(now())
+
+  @@unique([workerId, month, year])
+}
+
+model ManualAllocation {
+  id         String     @id @default(cuid())
+  targetType TargetType
+  targetId   String
+  itemName   String
+  unit       String
+  quantity   Decimal    @default(0) @db.Decimal(12, 3)
+  notes      String     @default("")
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}

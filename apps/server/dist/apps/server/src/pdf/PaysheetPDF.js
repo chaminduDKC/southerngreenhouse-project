@@ -1,0 +1,15 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+const styles = StyleSheet.create({
+    page: { padding: 30, fontSize: 12, fontFamily: 'Helvetica' },
+    header: { fontSize: 24, marginBottom: 20, textAlign: 'center', fontWeight: 'bold' },
+    section: { marginBottom: 20 },
+    row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#eee' },
+    label: { flex: 1, fontWeight: 'bold' },
+    value: { flex: 1, textAlign: 'right' },
+    netPayLabel: { flex: 1, fontWeight: 'bold', fontSize: 16 },
+    netPayValue: { flex: 1, textAlign: 'right', fontWeight: 'bold', fontSize: 16 }
+});
+const PaysheetPDF = ({ salary }) => (_jsx(Document, { children: _jsxs(Page, { size: "A5", style: styles.page, children: [_jsx(Text, { style: styles.header, children: "PAYSHEET" }), _jsxs(View, { style: styles.section, children: [_jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Worker:" }), _jsxs(Text, { style: styles.value, children: [salary.worker.name, " (", salary.worker.workerId, ")"] })] }), _jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Period:" }), _jsxs(Text, { style: styles.value, children: [salary.month, "/", salary.year] })] })] }), _jsxs(View, { style: styles.section, children: [_jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Days Worked:" }), _jsx(Text, { style: styles.value, children: salary.daysWorked })] }), _jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Rate Type:" }), _jsx(Text, { style: styles.value, children: salary.worker.rateType })] }), _jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Base Pay:" }), _jsxs(Text, { style: styles.value, children: ["LKR ", salary.basePay.toFixed(2)] })] }), _jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Bonuses:" }), _jsxs(Text, { style: styles.value, children: ["LKR ", salary.bonuses.toFixed(2)] })] }), _jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Deductions:" }), _jsxs(Text, { style: styles.value, children: ["LKR ", salary.deductions.toFixed(2)] })] }), _jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.label, children: "Advances Given:" }), _jsxs(Text, { style: styles.value, children: ["LKR ", salary.advancesTotal.toFixed(2)] })] })] }), _jsx(View, { style: [styles.section, { borderTopWidth: 2, paddingTop: 10 }], children: _jsxs(View, { style: styles.row, children: [_jsx(Text, { style: styles.netPayLabel, children: "NET PAY:" }), _jsxs(Text, { style: styles.netPayValue, children: ["LKR ", salary.netPay.toFixed(2)] })] }) })] }) }));
+export default PaysheetPDF;
+//# sourceMappingURL=PaysheetPDF.js.map
