@@ -48,16 +48,17 @@ router.put('/:id', asyncHandler(async (req, res) => {
         res.json({ success: true, data: entry });
     }
     catch (err) {
+        console.error('Ledger update error:', err);
         res.status(400).json({ success: false, error: err.message });
     }
 }));
 router.delete('/:id', asyncHandler(async (req, res) => {
-    console.log("Id id ", req.params['id']);
     try {
         await ledgerService.delete(req.params['id']);
         res.json({ success: true, data: null });
     }
     catch (err) {
+        console.error('Ledger delete error:', err);
         res.status(400).json({ success: false, error: err.message });
     }
 }));

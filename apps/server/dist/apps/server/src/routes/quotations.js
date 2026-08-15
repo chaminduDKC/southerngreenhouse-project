@@ -12,7 +12,7 @@ router.use(authenticate);
 const quotationSchema = z.object({
     clientId: z.string(),
     projectId: z.string().optional(),
-    validUntil: z.string().datetime(),
+    validUntil: z.string(),
     transportCost: z.number().optional(),
     notes: z.string().optional(),
     status: z.nativeEnum(QuotationStatus).optional(),

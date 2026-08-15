@@ -16,6 +16,83 @@ export const projectService = {
             orderBy: { createdAt: 'desc' }
         });
     },
+    async syncValueUpwards(projectId, tx) {
+        const project = await tx.project.findUnique({
+            where: { id: projectId },
+            include: { subProjects: { include: { children: true } } }
+        });
+        if (!project)
+            return;
+        let mainTotal = new Prisma.Decimal(0);
+        for (const sub of project.subProjects) {
+            if (sub.children.length > 0) {
+                let subTotal = new Prisma.Decimal(0);
+                for (const child of sub.children) {
+                    subTotal = subTotal.add(child.value);
+                }
+                await tx.subProject.update({ where: { id: sub.id }, data: { value: subTotal } });
+                mainTotal = mainTotal.add(subTotal);
+            }
+            else {
+                mainTotal = mainTotal.add(sub.value);
+            }
+        }
+        if (project.subProjects.length > 0) {
+            await tx.project.update({ where: { id: project.id }, data: { value: mainTotal } });
+        }
+    },
+    async syncValueDownwards(projectId, newValue, method, tx) {
+        const project = await tx.project.findUnique({
+            where: { id: projectId },
+            include: { subProjects: { include: { children: true } } }
+        });
+        if (!project || project.subProjects.length === 0)
+            return;
+        const newTotal = new Prisma.Decimal(newValue);
+        if (method === 'EQUAL') {
+            const numSubs = project.subProjects.length;
+            const valPerSub = newTotal.dividedBy(numSubs);
+            for (const sub of project.subProjects) {
+                await tx.subProject.update({ where: { id: sub.id }, data: { value: valPerSub } });
+                if (sub.children.length > 0) {
+                    const valPerChild = valPerSub.dividedBy(sub.children.length);
+                    await tx.childProject.updateMany({ where: { subProjectId: sub.id }, data: { value: valPerChild } });
+                }
+            }
+        }
+        else {
+            // PROPORTIONAL
+            let oldMainTotal = new Prisma.Decimal(0);
+            for (const sub of project.subProjects) {
+                oldMainTotal = oldMainTotal.add(sub.value);
+            }
+            if (oldMainTotal.isZero()) {
+                return this.syncValueDownwards(projectId, newValue, 'EQUAL', tx);
+            }
+            for (const sub of project.subProjects) {
+                const subRatio = sub.value.dividedBy(oldMainTotal);
+                const newSubVal = newTotal.mul(subRatio);
+                await tx.subProject.update({ where: { id: sub.id }, data: { value: newSubVal } });
+                if (sub.children.length > 0) {
+                    let oldSubTotal = new Prisma.Decimal(0);
+                    for (const child of sub.children) {
+                        oldSubTotal = oldSubTotal.add(child.value);
+                    }
+                    if (oldSubTotal.isZero()) {
+                        const valPerChild = newSubVal.dividedBy(sub.children.length);
+                        await tx.childProject.updateMany({ where: { subProjectId: sub.id }, data: { value: valPerChild } });
+                    }
+                    else {
+                        for (const child of sub.children) {
+                            const childRatio = child.value.dividedBy(oldSubTotal);
+                            const newChildVal = newSubVal.mul(childRatio);
+                            await tx.childProject.update({ where: { id: child.id }, data: { value: newChildVal } });
+                        }
+                    }
+                }
+            }
+        }
+    },
     async getById(id) {
         return prisma.project.findUniqueOrThrow({
             where: { id },
@@ -29,34 +106,104 @@ export const projectService = {
         return prisma.project.create({ data });
     },
     async update(id, data) {
-        return prisma.project.update({ where: { id }, data });
+        const { divisionMethod, ...rest } = data;
+        const project = await prisma.project.update({ where: { id }, data: rest });
+        if (data.value !== undefined && divisionMethod) {
+            await this.syncValueDownwards(id, data.value, divisionMethod, prisma);
+        }
+        return project;
     },
     async delete(id) {
-        return prisma.project.delete({ where: { id } });
+        return prisma.$transaction(async (tx) => {
+            const project = await tx.project.findUnique({
+                where: { id },
+                include: { subProjects: { include: { children: true } } }
+            });
+            if (!project)
+                return null;
+            const subIds = project.subProjects.map(s => s.id);
+            const childIds = project.subProjects.flatMap(s => s.children.map(c => c.id));
+            const targetIds = [id, ...subIds, ...childIds];
+            await tx.invoice.deleteMany({ where: { projectId: id } });
+            await tx.quotation.deleteMany({ where: { projectId: id } });
+            await tx.allocation.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.manualAllocation.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.ledgerCompletedProject.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.ledgerAllocatedProject.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.ledgerWorkerAdvance.deleteMany({ where: { targetId: { in: targetIds } } });
+            return tx.project.delete({ where: { id } });
+        });
     },
     async getSubById(id) {
         return prisma.subProject.findUniqueOrThrow({ where: { id }, include: { children: true } });
     },
     async createSub(data) {
-        return prisma.subProject.create({ data });
+        const sub = await prisma.subProject.create({ data });
+        await this.syncValueUpwards(sub.projectId, prisma);
+        return sub;
     },
     async updateSub(id, data) {
-        return prisma.subProject.update({ where: { id }, data });
+        const sub = await prisma.subProject.update({ where: { id }, data });
+        if (data.value !== undefined) {
+            await this.syncValueUpwards(sub.projectId, prisma);
+        }
+        return sub;
     },
     async deleteSub(id) {
-        return prisma.subProject.delete({ where: { id } });
+        return prisma.$transaction(async (tx) => {
+            const sub = await tx.subProject.findUnique({
+                where: { id },
+                include: { children: true }
+            });
+            if (!sub)
+                return null;
+            const childIds = sub.children.map(c => c.id);
+            const targetIds = [id, ...childIds];
+            await tx.allocation.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.manualAllocation.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.ledgerCompletedProject.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.ledgerAllocatedProject.deleteMany({ where: { targetId: { in: targetIds } } });
+            await tx.ledgerWorkerAdvance.deleteMany({ where: { targetId: { in: targetIds } } });
+            const deletedSub = await tx.subProject.delete({ where: { id } });
+            await this.syncValueUpwards(sub.projectId, tx);
+            return deletedSub;
+        });
     },
     async getChildById(id) {
         return prisma.childProject.findUniqueOrThrow({ where: { id } });
     },
     async createChild(data) {
-        return prisma.childProject.create({ data });
+        const child = await prisma.childProject.create({ data });
+        const sub = await prisma.subProject.findUnique({ where: { id: child.subProjectId } });
+        if (sub)
+            await this.syncValueUpwards(sub.projectId, prisma);
+        return child;
     },
     async updateChild(id, data) {
-        return prisma.childProject.update({ where: { id }, data });
+        const child = await prisma.childProject.update({ where: { id }, data });
+        if (data.value !== undefined) {
+            const sub = await prisma.subProject.findUnique({ where: { id: child.subProjectId } });
+            if (sub)
+                await this.syncValueUpwards(sub.projectId, prisma);
+        }
+        return child;
     },
     async deleteChild(id) {
-        return prisma.childProject.delete({ where: { id } });
+        return prisma.$transaction(async (tx) => {
+            const child = await tx.childProject.findUnique({ where: { id } });
+            if (!child)
+                return null;
+            await tx.allocation.deleteMany({ where: { targetId: id } });
+            await tx.manualAllocation.deleteMany({ where: { targetId: id } });
+            await tx.ledgerCompletedProject.deleteMany({ where: { targetId: id } });
+            await tx.ledgerAllocatedProject.deleteMany({ where: { targetId: id } });
+            await tx.ledgerWorkerAdvance.deleteMany({ where: { targetId: id } });
+            const deletedChild = await tx.childProject.delete({ where: { id } });
+            const sub = await tx.subProject.findUnique({ where: { id: child.subProjectId } });
+            if (sub)
+                await this.syncValueUpwards(sub.projectId, tx);
+            return deletedChild;
+        });
     },
     async getAllocations(targetType, targetId) {
         return prisma.allocation.findMany({
@@ -190,14 +337,14 @@ export const projectService = {
         }
         if (targetType === TargetType.SUB_PROJECT) {
             const sub = await tx.subProject.findUnique({ where: { id: targetId }, include: { project: true } });
-            return sub ? `${sub.project.title} > ${sub.title}` : 'Unknown Sub-Project';
+            return sub ? `${sub.project.title} -> ${sub.title}` : 'Unknown Sub-Project';
         }
         if (targetType === TargetType.CHILD_PROJECT) {
             const child = await tx.childProject.findUnique({
                 where: { id: targetId },
                 include: { subProject: { include: { project: true } } }
             });
-            return child ? `${child.subProject.project.title} > ${child.subProject.title} > ${child.title}` : 'Unknown Child-Project';
+            return child ? `${child.subProject.project.title} -> ${child.subProject.title} -> ${child.title}` : 'Unknown Child-Project';
         }
         return 'Unknown';
     },

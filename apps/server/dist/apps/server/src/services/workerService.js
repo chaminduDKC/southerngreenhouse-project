@@ -28,7 +28,12 @@ export const workerService = {
         return prisma.worker.update({ where: { id }, data });
     },
     async delete(id) {
-        return prisma.worker.delete({ where: { id } });
+        return prisma.$transaction(async (tx) => {
+            await tx.attendance.deleteMany({ where: { workerId: id } });
+            await tx.salary.deleteMany({ where: { workerId: id } });
+            await tx.ledgerWorkerAdvance.deleteMany({ where: { workerId: id } });
+            return tx.worker.delete({ where: { id } });
+        });
     }
 };
 //# sourceMappingURL=workerService.js.map

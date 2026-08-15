@@ -12,6 +12,7 @@ import salaryRoutes from './routes/salary.js';
 import quotationRoutes from './routes/quotations.js';
 import invoiceRoutes from './routes/invoices.js';
 import dashboardRoutes from './routes/dashboard.js';
+import manualAllocationRoutes from './routes/manualAllocations.js';
 const app = express();
 app.use(cors({
     origin: (origin, cb) => {
@@ -45,6 +46,8 @@ app.use('/api/quotations', quotationRoutes);
 app.use('/api/invoices', invoiceRoutes);
 // Dashboard — serves both /api/dashboard and /api/dashboard/stats
 app.use('/api/dashboard', dashboardRoutes);
+// Manual Allocations
+app.use('/api/manual-allocations', manualAllocationRoutes);
 // Global error handler
 app.use(errorHandler);
 export default app;

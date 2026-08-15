@@ -9,14 +9,14 @@ const attendanceSchema = z.object({
     workerId: z.string(),
     date: z.string().datetime(),
     present: z.boolean(),
-    advanceGiven: z.number().optional()
+    dailyPaid: z.number().optional()
 });
 const bulkAttendanceSchema = z.object({
     date: z.string(),
     records: z.array(z.object({
         workerId: z.string(),
         present: z.boolean(),
-        advanceGiven: z.number().optional()
+        dailyPaid: z.number().optional()
     }))
 });
 router.get('/', asyncHandler(async (req, res) => {
@@ -35,6 +35,7 @@ router.post('/', asyncHandler(async (req, res) => {
     res.json({ success: true, data: a });
 }));
 router.post('/bulk', asyncHandler(async (req, res) => {
+    console.log(req.body);
     const data = bulkAttendanceSchema.parse(req.body);
     const a = await attendanceService.bulkUpsert(data);
     res.json({ success: true, data: a });

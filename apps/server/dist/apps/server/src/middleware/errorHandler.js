@@ -1,7 +1,15 @@
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
+import { AppError } from 'src/utils/AppError.js';
 export const errorHandler = (err, req, res, next) => {
     console.error(err);
+    if (err instanceof AppError) {
+        return res.status(err.statusCode).json({
+            success: false,
+            error: err.message,
+            code: err.code,
+        });
+    }
     if (err instanceof ZodError) {
         return res.status(400).json({ success: false, error: 'Validation Error', details: err.errors });
     }

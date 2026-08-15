@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { projectService } from '../services/projectService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ProjectStatus, TargetType } from '@prisma/client';
+import { DivisionMethod } from '@sg/types';
 // ── Schemas ──────────────────────────────────────────────────────────
 const projectSchema = z.object({
     clientId: z.string(),
@@ -12,14 +13,21 @@ const projectSchema = z.object({
     status: z.nativeEnum(ProjectStatus).optional(),
     notes: z.string().optional(),
     value: z.number().optional(),
+    divisionMethod: z.nativeEnum(DivisionMethod).optional(),
+});
+const numericString = z.union([z.number(), z.string()]).transform(val => {
+    const n = typeof val === 'string' ? parseFloat(val) : val;
+    if (Number.isNaN(n))
+        throw new Error('Invalid number');
+    return n;
 });
 const subProjectSchema = z.object({
     projectId: z.string(),
     title: z.string(),
     location: z.string(),
     status: z.nativeEnum(ProjectStatus).optional(),
-    notes: z.string().optional(),
-    value: z.number().optional(),
+    notes: z.string().nullable().optional(),
+    value: numericString.optional(),
 });
 const childProjectSchema = z.object({
     subProjectId: z.string(),

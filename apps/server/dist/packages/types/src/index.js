@@ -29,4 +29,9 @@ export var QuotationStatus;
     QuotationStatus["ACCEPTED"] = "ACCEPTED";
     QuotationStatus["REJECTED"] = "REJECTED";
 })(QuotationStatus || (QuotationStatus = {}));
+export var DivisionMethod;
+(function (DivisionMethod) {
+    DivisionMethod["EQUAL"] = "EQUAL";
+    DivisionMethod["PROPORTIONAL"] = "PROPORTIONAL";
+})(DivisionMethod || (DivisionMethod = {}));
 //# sourceMappingURL=index.js.map

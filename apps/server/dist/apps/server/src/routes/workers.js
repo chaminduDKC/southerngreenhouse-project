@@ -8,10 +8,10 @@ const router = Router();
 router.use(authenticate);
 const workerSchema = z.object({
     name: z.string(),
-    phone: z.string(),
+    phone: z.string().min(9),
     address: z.string(),
     rateType: z.nativeEnum(RateType),
-    rate: z.number().positive(),
+    rate: z.number().nonnegative(),
 });
 router.get('/', asyncHandler(async (req, res) => {
     const workers = await workerService.getAll();

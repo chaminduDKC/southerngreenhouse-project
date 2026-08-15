@@ -14,7 +14,9 @@ const loginSchema = z.object({
     password: z.string()
 });
 router.post('/login', loginRateLimiter, asyncHandler(async (req, res) => {
+    console.log("Called login");
     const { email, password } = loginSchema.parse(req.body);
+    console.log(email, password);
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
         return res.status(401).json({ success: false, error: 'Invalid email or password' });

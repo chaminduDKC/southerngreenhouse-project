@@ -14,7 +14,7 @@ const invoiceSchema = z.object({
     quotationId: z.string().optional(),
     totalAmount: z.number().nonnegative(),
     amountDue: z.number().nonnegative(),
-    dueDate: z.string().datetime(),
+    dueDate: z.string(),
     notes: z.string().optional()
 });
 router.get('/', asyncHandler(async (req, res) => {

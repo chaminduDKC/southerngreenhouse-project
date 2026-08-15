@@ -12,16 +12,23 @@ async function calculateAllocations(cost, targets, tx) {
         }
         else if (t.targetType === TargetType.SUB_PROJECT) {
             const sub = await tx.subProject.findUnique({ where: { id: t.targetId } });
+            if (!sub)
+                return null;
             return { ...t, projectId: sub.projectId, subProjectId: t.targetId, childProjectId: null };
         }
         else {
             const child = await tx.childProject.findUnique({ where: { id: t.targetId }, include: { subProject: true } });
+            if (!child || !child.subProject)
+                return null;
             return { ...t, projectId: child.subProject.projectId, subProjectId: child.subProjectId, childProjectId: t.targetId };
         }
     }));
+    const validTargets = resolvedTargets.filter((t) => t !== null);
+    if (validTargets.length === 0)
+        return [];
     // 2. Group by Root Project
     const rootGroups = new Map();
-    for (const rt of resolvedTargets) {
+    for (const rt of validTargets) {
         if (!rootGroups.has(rt.projectId))
             rootGroups.set(rt.projectId, []);
         rootGroups.get(rt.projectId).push(rt);
@@ -133,24 +140,42 @@ export const ledgerService = {
             }
         });
         return {
-            ...e,
+            id: e.id,
+            date: e.date.toISOString(),
+            openingBalance: e.openingBalance.toNumber(),
+            paymentGivenToday: e.paymentGivenToday.toNumber(),
+            balanceReturnedToday: e.balanceReturnedToday.toNumber(),
+            cost: e.cost.toNumber(),
+            createdAt: e.createdAt.toISOString(),
+            updatedAt: e.updatedAt.toISOString(),
             workerAdvances: await Promise.all(e.workerAdvances.map(async (wa) => ({
-                ...wa,
+                workerId: wa.workerId,
+                workerName: wa.worker.name,
+                advanceAmount: wa.advanceAmount.toNumber(),
+                targetType: wa.targetType || undefined,
+                targetId: wa.targetId || undefined,
                 targetTitle: (wa.targetType && wa.targetId) ? await projectService.resolveTargetName(wa.targetType, wa.targetId, prisma) : undefined
             }))),
             completedProjects: await Promise.all(e.completedProjects.map(async (cp) => ({
-                ...cp,
+                targetType: cp.targetType,
+                targetId: cp.targetId,
                 targetTitle: await projectService.resolveTargetName(cp.targetType, cp.targetId, prisma)
             }))),
             allocatedProjects: await Promise.all(e.allocatedProjects.map(async (ap) => ({
-                ...ap,
-                targetTitle: await projectService.resolveTargetName(ap.targetType, ap.targetId, prisma)
+                targetType: ap.targetType,
+                targetId: ap.targetId,
+                targetTitle: await projectService.resolveTargetName(ap.targetType, ap.targetId, prisma),
+                amount: ap.amount.toNumber()
             })))
         };
     },
     async create(data) {
         const result = await prisma.$transaction(async (tx) => {
-            const cost = new Prisma.Decimal(data.openingBalance).add(data.paymentGivenToday).sub(data.balanceReturnedToday);
+            const workerAdvancesTotal = data.workerAdvances.reduce((sum, wa) => sum.add(new Prisma.Decimal(wa.advanceAmount || 0)), new Prisma.Decimal(0));
+            const cost = new Prisma.Decimal(data.openingBalance)
+                .add(data.paymentGivenToday)
+                .sub(data.balanceReturnedToday)
+                .add(workerAdvancesTotal);
             const computedAllocations = await calculateAllocations(cost, data.allocatedProjects || [], tx);
             const entryDate = new Date(data.date);
             const entry = await tx.ledgerEntry.create({
@@ -191,15 +216,15 @@ export const ledgerService = {
                 if (rootId)
                     affectedRootProjects.add(rootId);
             }
-            // Update Attendance for worker advances
+            // Update Attendance dailyPaid for each worker payment logged in this ledger entry
             for (const wa of data.workerAdvances) {
                 await tx.attendance.upsert({
                     where: { workerId_date: { workerId: wa.workerId, date: entryDate } },
-                    update: { advanceGiven: wa.advanceAmount },
-                    create: { workerId: wa.workerId, date: entryDate, present: true, advanceGiven: wa.advanceAmount }
+                    update: { dailyPaid: wa.advanceAmount },
+                    create: { workerId: wa.workerId, date: entryDate, present: true, dailyPaid: wa.advanceAmount }
                 });
             }
-            return { entry, affectedRootProjects: Array.from(affectedRootProjects), completedProjects: data.allocatedProjects };
+            return { entry, affectedRootProjects: Array.from(affectedRootProjects), completedProjects: data.completedProjects || [] };
         });
         // Mark projects completed OUTSIDE transaction to avoid timeouts
         for (const cp of result.completedProjects) {
@@ -228,7 +253,7 @@ export const ledgerService = {
     async update(id, data) {
         const entry = await prisma.ledgerEntry.findUnique({
             where: { id },
-            include: { workerAdvances: true, allocatedProjects: true }
+            include: { workerAdvances: true, allocatedProjects: true, completedProjects: true }
         });
         if (!entry)
             throw new Error('Not found');
@@ -244,20 +269,22 @@ export const ledgerService = {
                 if (rootId)
                     affectedRootProjects.add(rootId);
             }
-            // Revert old attendance advances (set to 0 for those workers on this date)
+            // Revert old dailyPaid on attendance (set to 0 for those workers on this date)
             for (const oldWa of entry.workerAdvances) {
                 await tx.attendance.updateMany({
                     where: { workerId: oldWa.workerId, date: entry.date },
-                    data: { advanceGiven: 0 }
+                    data: { dailyPaid: 0 }
                 });
             }
             // Delete old nested relations
             await tx.ledgerWorkerAdvance.deleteMany({ where: { ledgerEntryId: id } });
             await tx.ledgerCompletedProject.deleteMany({ where: { ledgerEntryId: id } });
             await tx.ledgerAllocatedProject.deleteMany({ where: { ledgerEntryId: id } });
+            const workerAdvancesTotal = (data.workerAdvances || []).reduce((sum, wa) => sum.add(new Prisma.Decimal(wa.advanceAmount || 0)), new Prisma.Decimal(0));
             const cost = new Prisma.Decimal(data.openingBalance ?? entry.openingBalance.toNumber())
                 .add(data.paymentGivenToday ?? entry.paymentGivenToday.toNumber())
-                .sub(data.balanceReturnedToday ?? entry.balanceReturnedToday.toNumber());
+                .sub(data.balanceReturnedToday ?? entry.balanceReturnedToday.toNumber())
+                .add(workerAdvancesTotal);
             const computedAllocations = await calculateAllocations(cost, data.allocatedProjects || [], tx);
             const updatedEntry = await tx.ledgerEntry.update({
                 where: { id },
@@ -296,19 +323,26 @@ export const ledgerService = {
                 if (rootId)
                     affectedRootProjects.add(rootId);
             }
-            // Apply new attendance advances
+            // Apply new dailyPaid amounts on attendance
             if (data.workerAdvances) {
                 for (const wa of data.workerAdvances) {
                     await tx.attendance.upsert({
                         where: { workerId_date: { workerId: wa.workerId, date: entry.date } },
-                        update: { advanceGiven: wa.advanceAmount },
-                        create: { workerId: wa.workerId, date: entry.date, present: true, advanceGiven: wa.advanceAmount }
+                        update: { dailyPaid: wa.advanceAmount },
+                        create: { workerId: wa.workerId, date: entry.date, present: true, dailyPaid: wa.advanceAmount }
                     });
                 }
             }
             return { updatedEntry, affectedRootProjects: Array.from(affectedRootProjects), completedProjects: data.completedProjects || [] };
         });
-        // Mark projects completed OUTSIDE transaction to avoid timeouts
+        // 1. Revert any previously completed project that was unselected / removed
+        const newCompletedIds = new Set((result.completedProjects || []).map(cp => cp.targetId));
+        for (const oldCp of entry.completedProjects) {
+            if (!newCompletedIds.has(oldCp.targetId)) {
+                await projectService.revertCascadeCompletion(oldCp.targetType, oldCp.targetId, prisma);
+            }
+        }
+        // 2. Mark projects completed OUTSIDE transaction to avoid timeouts
         for (const cp of result.completedProjects) {
             if (cp.targetType === TargetType.PROJECT) {
                 await prisma.project.update({ where: { id: cp.targetId }, data: { status: 'COMPLETED' } });

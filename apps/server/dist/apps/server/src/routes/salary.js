@@ -16,6 +16,7 @@ const calcSchema = z.object({
 const saveSchema = calcSchema.extend({
     daysWorked: z.number().nonnegative(),
     basePay: z.number().nonnegative(),
+    dailyPaid: z.number().nonnegative(),
     bonuses: z.number().nonnegative(),
     deductions: z.number().nonnegative(),
     advancesTotal: z.number().nonnegative(),
@@ -29,6 +30,10 @@ router.get('/:id', asyncHandler(async (req, res) => {
     const salary = await salaryService.getById(req.params['id']);
     res.json({ success: true, data: salary });
 }));
+router.get('/:id/history', asyncHandler(async (req, res) => {
+    const history = await salaryService.getHistory(req.params['id']);
+    res.json({ success: true, data: history });
+}));
 router.post('/calculate', asyncHandler(async (req, res) => {
     const data = calcSchema.parse(req.body);
     const result = await salaryService.calculate(data);
@@ -40,7 +45,7 @@ router.post('/', asyncHandler(async (req, res) => {
     res.json({ success: true, data: salary });
 }));
 router.put('/:id', asyncHandler(async (req, res) => {
-    const data = saveSchema.pick({ bonuses: true, deductions: true, netPay: true }).partial().parse(req.body);
+    const data = saveSchema.pick({ bonuses: true, deductions: true, advancesTotal: true, dailyPaid: true, netPay: true }).partial().parse(req.body);
     const salary = await salaryService.update(req.params['id'], data);
     res.json({ success: true, data: salary });
 }));
@@ -48,6 +53,16 @@ router.get('/:id/pdf', asyncHandler(async (req, res) => {
     const salary = await salaryService.getById(req.params['id']);
     const doc = React.createElement(PaysheetPDF, { salary });
     await streamPDF(doc, res, `Paysheet_${salary.worker.workerId}_${salary.month}_${salary.year}`);
+}));
+router.delete('/:id', asyncHandler(async (req, res) => {
+    try {
+        await salaryService.delete(req.params['id']);
+        res.json({ success: true, data: null });
+    }
+    catch (err) {
+        console.error('Salary delete error:', err);
+        res.status(400).json({ success: false, error: err.message });
+    }
 }));
 export default router;
 //# sourceMappingURL=salary.js.map

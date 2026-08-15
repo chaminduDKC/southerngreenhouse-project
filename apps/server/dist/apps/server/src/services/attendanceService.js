@@ -24,7 +24,7 @@ export const attendanceService = {
                 workerId: data.workerId,
                 date: new Date(data.date),
                 present: data.present,
-                advanceGiven: data.advanceGiven || 0
+                dailyPaid: data.dailyPaid || 0
             }
         });
         await salaryService.syncSalary(record.workerId, record.date);
@@ -34,8 +34,8 @@ export const attendanceService = {
         const date = new Date(data.date);
         const result = await prisma.$transaction(data.records.map(record => prisma.attendance.upsert({
             where: { workerId_date: { workerId: record.workerId, date } },
-            update: { present: record.present, advanceGiven: record.advanceGiven || 0 },
-            create: { workerId: record.workerId, date, present: record.present, advanceGiven: record.advanceGiven || 0 }
+            update: { present: record.present, dailyPaid: record.dailyPaid || 0 },
+            create: { workerId: record.workerId, date, present: record.present, dailyPaid: record.dailyPaid || 0 }
         })));
         // Sync salary for all workers involved
         for (const record of data.records) {

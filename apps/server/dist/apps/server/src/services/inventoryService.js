@@ -37,11 +37,14 @@ export const inventoryService = {
         return this.getById(item.id);
     },
     async delete(id) {
-        const allocations = await prisma.allocation.count({ where: { inventoryItemId: id } });
-        if (allocations > 0) {
-            throw new Error('Cannot delete item with existing allocations');
-        }
-        return prisma.inventoryItem.delete({ where: { id } });
+        return prisma.$transaction(async (tx) => {
+            await tx.allocation.deleteMany({ where: { inventoryItemId: id } });
+            await tx.quotationItem.updateMany({
+                where: { inventoryItemId: id },
+                data: { inventoryItemId: null }
+            });
+            return tx.inventoryItem.delete({ where: { id } });
+        });
     },
     async getEligibleTargets() {
         const projects = await prisma.project.findMany({
