@@ -3,9 +3,10 @@ import { setupBlacklistCleanup } from './cron/blacklistCleanup.js';
 import prisma from './lib/prisma.js';
 
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '127.0.0.1';
 
-const server = app.listen(PORT as number, '127.0.0.1', () => {
-  console.log(`Server listening on http://127.0.0.1:${PORT}`);
+const server = app.listen(PORT as number, HOST, () => {
+  console.log(`Server listening on http://${HOST}:${PORT}`);
   if (process.send) {
     process.send('ready');
   }
